@@ -1,0 +1,64 @@
+name: Deploy n8n with ngrok
+
+on:
+  workflow_dispatch:  # Allows manual trigger
+  schedule:
+    - cron: "0 */5 * * *"  # Runs every 5 hours to auto-restart
+
+jobs:
+  deploy-n8n:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up SSH Access via Serveo (Optional)
+        run: |
+          sudo apt update && sudo apt install -y openssh-server
+          echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
+          echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
+          sudo service ssh restart
+          echo "root:github" | sudo chpasswd
+          ssh -o StrictHostKeyChecking=no -R 0:localhost:22 serveo.net > serveo.txt 2>&1 &
+          sleep 5
+          grep -oE "serveo.net:[0-9]+" serveo.txt | tee ssh_port.txt
+          echo "SSH into the VM using:"
+          cat ssh_port.txt | sed 's/^/ssh -p /;s/$/ root@serveo.net/'
+
+      - name: Set up n8n Data Directory
+        run: |
+          sudo mkdir -p ./n8n_data
+          sudo chown -R 1000:1000 ./n8n_data
+          sudo chmod -R 777 ./n8n_data
+
+      - name: Install Docker & Docker Compose
+        run: |
+          sudo apt update
+          sudo apt install -y docker.io docker-compose
+          sudo systemctl start docker
+          sudo systemctl enable docker
+
+      - name: Start n8n with Docker Compose
+        run: docker-compose up -d
+
+      - name: Install & Configure ngrok
+        run: |
+          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
+          unzip ngrok-stable-linux-amd64.zip
+          sudo mv ngrok /usr/local/bin/
+          ngrok config add-authtoken 2tbyFMZTbGsnyrIiwkkFRe4daED_5qN5HnVvHt6oC4cLb44nj
+
+      - name: Expose n8n via ngrok
+        run: |
+          ngrok http 5678 > ngrok.txt &
+          sleep 10
+          curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url' | tee n8n_url.txt
+
+      - name: Show Public URL
+        run: |
+          echo "Access n8n via this URL:"
+          cat n8n_url.txt
+
+      - name: Keep the VM Alive
+        run: sleep 17999
