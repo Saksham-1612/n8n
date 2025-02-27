@@ -1,9 +1,10 @@
 name: Deploy n8n with ngrok
 
 on:
-  workflow_dispatch:  # Allows manual trigger
+  workflow_dispatch: # Allows manual trigger
+  push: # Runs on every commit
   schedule:
-    - cron: "0 */5 * * *"  # Runs every 5 hours to auto-restart
+    - cron: "0 */5 * * *" # Runs every 5 hours to auto-restart
 
 jobs:
   deploy-n8n:
@@ -12,8 +13,11 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          repository: Saksham-1612/n8n
+          path: n8n-repo
 
-      - name: Set up SSH Access via Serveo (Optional)
+      - name: Set up SSH Access via Serveo
         run: |
           sudo apt update && sudo apt install -y openssh-server
           echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
@@ -28,7 +32,8 @@ jobs:
 
       - name: Set up n8n Data Directory
         run: |
-          sudo mkdir -p ./n8n_data
+          cd n8n-repo
+          mkdir -p ./n8n_data
           sudo chown -R 1000:1000 ./n8n_data
           sudo chmod -R 777 ./n8n_data
 
@@ -40,7 +45,9 @@ jobs:
           sudo systemctl enable docker
 
       - name: Start n8n with Docker Compose
-        run: docker-compose up -d
+        run: |
+          cd n8n-repo
+          docker-compose up -d
 
       - name: Install & Configure ngrok
         run: |
@@ -54,11 +61,10 @@ jobs:
           ngrok http 5678 > ngrok.txt &
           sleep 10
           curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url' | tee n8n_url.txt
-
-      - name: Show Public URL
-        run: |
           echo "Access n8n via this URL:"
           cat n8n_url.txt
 
       - name: Keep the VM Alive
-        run: sleep 17999
+        run: |
+          echo "n8n service will remain available for approximately 5 hours"
+          sleep 17999
